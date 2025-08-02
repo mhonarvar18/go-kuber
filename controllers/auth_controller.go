@@ -1,36 +1,72 @@
 package controllers
 
 import (
+	"auth-service/config"
 	"auth-service/models"
 	"auth-service/utils"
-	"github.com/gin-gonic/gin"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
-var users = []models.User{} // در مرحله اول، بدون DB
-
 func SignUp(c *gin.Context) {
-	var user models.User
-	if err := c.ShouldBindJSON(&user); err != nil {
+	var input models.User
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
-	users = append(users, user)
+
+	// چک موجود بودن کاربر
+	var existing models.User
+	if err := config.DB.Where("username = ?", input.Username).First(&existing).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
+		return
+	}
+
+	// رمزنگاری
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+		return
+	}
+
+	user := models.User{
+		Username: input.Username,
+		Password: string(hashedPassword),
+	}
+
+	if err := config.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{"message": "User created"})
 }
 
 func Login(c *gin.Context) {
-	var login models.User
-	if err := c.ShouldBindJSON(&login); err != nil {
+	var input models.User
+	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
 		return
 	}
-	for _, u := range users {
-		if u.Username == login.Username && u.Password == login.Password {
-			token, _ := utils.GenerateJWT(u.Username)
-			c.JSON(http.StatusOK, gin.H{"token": token})
-			return
-		}
+
+	var user models.User
+	if err := config.DB.Where("username = ?", input.Username).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
 	}
-	c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	token, err := utils.GenerateJWT(user.Username)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": token})
 }
