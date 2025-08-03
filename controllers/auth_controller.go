@@ -70,3 +70,13 @@ func Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
+
+func Me(c *gin.Context) {
+	username, exists := c.Get("username")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "User not found in context"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"username": username})
+}

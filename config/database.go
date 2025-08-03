@@ -9,7 +9,7 @@ import (
 var DB *gorm.DB
 
 func InitDB() {
-	dsn := "host=localhost user=palladium password=123456789 dbname=authdb port=5432 sslmode=disable"
+	dsn := "host=host.docker.internal user=palladium password=123456789 dbname=authdb port=5432 sslmode=disable"
 
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
